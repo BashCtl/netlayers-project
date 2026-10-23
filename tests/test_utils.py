@@ -1,6 +1,6 @@
 import pytest
 
-from netlayers.untils import format_mac
+from netlayers.untils import format_ip, format_mac
 
 
 def test_format_mac_basic():
@@ -23,3 +23,21 @@ def test_format_invalid_length_byte_mac_raises_error():
 def test_format_empty_byte_mac_raises_error():
     with pytest.raises(ValueError, match="A MAC address must be exactly 6 bytes"):
         format_mac(b"")
+
+
+def test_format_valid_ip_bytes_to_string():
+    assert format_ip(b"\xc0\xa8\x01\x01") == "192.168.1.1"
+
+
+def test_format_zero_padded_ip_bytes():
+    assert format_ip(b"\x00\x00\x00\x00") == "0.0.0.0"
+
+
+def test_format_ivalid_ip_bytes_length_raises_error():
+    with pytest.raises(ValueError, match="An IP address must be exactly 4 bytes"):
+        format_ip(b"\xff" * 5)
+
+
+def test_format_empty_ip_bytes_raises_error():
+    with pytest.raises(ValueError, match="An IP address must be exactly 4 bytes"):
+        format_ip(b"")
