@@ -1,3 +1,6 @@
+import re
+
+
 def format_mac(input_bytes: bytes):
     if len(input_bytes) != 6:
         raise ValueError("A MAC address must be exactly 6 bytes")
@@ -27,4 +30,8 @@ def hexdump(data: bytes):
     return "\n".join(result)
 
 
+def parse_mac(mac: str) -> bytes:
+    if not re.fullmatch(r"(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}", mac):
+        raise ValueError(f"Invalid MAC address: {mac}")
 
+    return bytes.fromhex(mac.replace(":", ""))
