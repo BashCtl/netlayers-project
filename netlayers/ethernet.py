@@ -31,9 +31,3 @@ def parse_frame(raw_data: bytes) -> dict:
         "payload": payload,
     }
 
-
-result =parse_frame(
-    b"fGQkc\xcc\x1aF\xf73u\xa8\x08\x06\x00\x01\x08\x00\x06\x04\x00\x02\x1aF\xf73u\xa8\n\x00\x00\x02fGQkc\xcc\n\x00\x00\x01"
-)
-
-print(result)
