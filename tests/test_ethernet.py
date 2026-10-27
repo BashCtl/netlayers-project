@@ -1,5 +1,6 @@
-from netlayers.ethernet import parse_frame
 import pytest
+
+from netlayers.ethernet import parse_frame
 
 
 def test_parse_normal_ipv4_ethernet_frame():
