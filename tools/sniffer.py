@@ -1,54 +1,12 @@
+import argparse
 import socket
 from contextlib import ExitStack
 from datetime import UTC, datetime
 from itertools import count as forever
-from pathlib import Path
-
-from scapy.layers.l2 import Ether
-from scapy.utils import PcapWriter
 
 from netlayers.ethernet import parse_frame
 from netlayers.utils import hexdump
-
-
-class TxtWriter:
-    def __init__(self, path):
-        self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.file = self.path.open("a", encoding="utf-8")
-
-    def write(self, frame: bytes, captured_at: str) -> None:
-        self.file.write(f"{captured_at} -> {frame.hex()}\n")
-
-    def close(self) -> None:
-        self.file.close()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        self.close()
-
-
-class PcapFileWriter:
-    def __init__(self, path):
-        self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.writer = PcapWriter(str(self.path), append=True, sync=True)
-
-    def write(self, frame: bytes, captured_at: str) -> None:
-        pkt = Ether(frame)
-        pkt.time = datetime.fromisoformat(captured_at).timestamp()
-        self.writer.write(pkt)
-
-    def close(self):
-        self.writer.close()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        self.close()
+from netlayers.writers import PcapFileWriter, TxtWriter
 
 
 def display_frame(
@@ -61,11 +19,11 @@ def display_frame(
         print(hexdump(raw_data))
     elif display == "parsed":
         parsed_ether_frame = parse_frame(raw_data)
-        print(f"\nEhernet Frame captured at: {captured_at}")
+        print(f"\nEthernet Frame captured at: {captured_at}")
         print("-" * 15)
         print(f"Destination MAC: {parsed_ether_frame['dst_mac']}")
         print(f"Source MAC: {parsed_ether_frame['src_mac']}")
-        print(f"Ethertype: {parsed_ether_frame['ethertype']}")
+        print(f"Ethertype: {hex(parsed_ether_frame['ethertype'])}")
         print(f"VLAN ID: {parsed_ether_frame['vlan_id']}")
         print(f"Payload: {len(parsed_ether_frame['payload'])} bytes")
     else:
@@ -79,34 +37,37 @@ def sniff(
     display: str | None = "parsed",
     txt_file: str | None = None,
     pcap_file: str | None = None,
-):
+) -> None:
     s = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(socket.ETH_P_ALL))
     try:
         s.bind((interface, 0))
 
-        ether_frames = []
         frames = range(count) if count > 0 else forever()
 
         writers = []
-        if txt_file:
-            writers.append(TxtWriter(txt_file))
-        if pcap_file:
-            writers.append(PcapFileWriter(pcap_file))
 
         with ExitStack() as stack:
+            if txt_file:
+                writers.append(TxtWriter(txt_file))
+            if pcap_file:
+                writers.append(PcapFileWriter(pcap_file))
+
             for w in writers:
                 stack.enter_context(w)
 
             for _ in frames:
-                raw_data, addr = s.recvfrom(65565)
+                raw_data, addr = s.recvfrom(65535)
                 captured_at = datetime.now(UTC).isoformat()
                 for writer in writers:
                     writer.write(raw_data, captured_at)
                 if display is not None:
-                    display_frame(raw_data, display=display, captured_at=captured_at)
+                    try:
+                        display_frame(
+                            raw_data, display=display, captured_at=captured_at
+                        )
+                    except ValueError as e:
+                        print(f"Malformed frame skipped: {e}")
 
-                ether_frames.append(raw_data)
-        return ether_frames
     except KeyboardInterrupt:
         print("\nStopping capture.")
     except OSError as e:
@@ -115,11 +76,58 @@ def sniff(
         s.close()
 
 
-if __name__ == "__main__":
-    sniff(
-        "vethA",
-        txt_file="./capture.txt",
-        pcap_file="capture.pcap",
-        display="parsed",
-        count=5,
+def main():
+    parser = argparse.ArgumentParser(description="Packet sniffer")
+    parser.add_argument(
+        "-i",
+        "--interface",
+        type=str,
+        required=True,
+        help="Interface to capture frames from",
     )
+    parser.add_argument(
+        "-c",
+        "--count",
+        type=int,
+        default=0,
+        help="Number of packets to capture. Default: unlimited",
+    )
+    parser.add_argument(
+        "-d",
+        "--display",
+        type=str,
+        choices=["raw", "parsed"],
+        default="parsed",
+        help="Display format: raw or parsed",
+    )
+    parser.add_argument(
+        "--text-file",
+        type=str,
+        help="Path to save packets in hexadecimal format",
+    )
+    parser.add_argument(
+        "--pcap-file",
+        type=str,
+        help="Path to save captured packets in PCAP format",
+    )
+
+    try:
+        args = parser.parse_args()
+        if args.count < 0:
+            parser.error("--count must be 0 or greater")
+        display = None if args.display == "none" else args.display
+
+        sniff(
+            interface=args.interface,
+            count=args.count,
+            display=display,
+            txt_file=args.text_file,
+            pcap_file=args.pcap_file,
+        )
+
+    except ValueError as e:
+        print(f"Value error: {e}")
+
+
+if __name__ == "__main__":
+    main()
