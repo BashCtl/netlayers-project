@@ -12,5 +12,5 @@ wheels/
 # Local dir, files
 .playground
 create_nets.sh
-captured.txt
+captures
 *.pcap
