@@ -42,8 +42,3 @@ def parse_tcp(ipv4_payload) -> dict[str, Any]:
         "urgent_pointer": urgent_pointer,
         "payload": payload,
     }
-
-
-frame = bytes.fromhex(
-    "1a46f73375a89660f528217508004500003c534940004006d3700a0000010a000002aad21f90ef0ccbe900000000a002faf014310000020405b40402080ab8f55813000000000103030a"
-)

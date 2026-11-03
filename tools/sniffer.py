@@ -4,28 +4,27 @@ from contextlib import ExitStack
 from datetime import UTC, datetime
 from itertools import count as forever
 
-from netlayers.ethernet import parse_frame
+from netlayers.dissect import dissect
+from netlayers.formatters import FORMATTERS
 from netlayers.utils import hexdump
 from netlayers.writers import PcapFileWriter, TxtWriter
 
 
-def display_frame(
+def display_data(
     raw_data: bytes,
     captured_at: str,
     display: str | None,
 ):
     if display == "raw":
         print("-" * 80)
+        print(f"Captured at: {captured_at}")
         print(hexdump(raw_data))
     elif display == "parsed":
-        parsed_ether_frame = parse_frame(raw_data)
-        print(f"\nEthernet Frame captured at: {captured_at}")
-        print("-" * 15)
-        print(f"Destination MAC: {parsed_ether_frame['dst_mac']}")
-        print(f"Source MAC: {parsed_ether_frame['src_mac']}")
-        print(f"Ethertype: {hex(parsed_ether_frame['ethertype'])}")
-        print(f"VLAN ID: {parsed_ether_frame['vlan_id']}")
-        print(f"Payload: {len(parsed_ether_frame['payload'])} bytes")
+        layers = dissect(raw_data)
+        for name, layer in layers.items():
+            print("-" * 100)
+            print(f"Captured at: {captured_at}")
+            print(FORMATTERS[name](layer))
     else:
         raise ValueError("Invalid display value")
 
@@ -62,7 +61,7 @@ def sniff(
                     writer.write(raw_data, captured_at)
                 if display is not None:
                     try:
-                        display_frame(
+                        display_data(
                             raw_data, display=display, captured_at=captured_at
                         )
                     except ValueError as e:
