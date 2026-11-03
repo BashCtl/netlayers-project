@@ -1,7 +1,13 @@
 import struct
 
-from netlayers.constant import ETH_HEADER_LEN, ETHERTYPE_VLAN, VLAN_ETH_HEADER_LEN
-from netlayers.utils import format_mac
+from netlayers.constant import (
+    ETH_HEADER_LEN,
+    ETHER_MAX_PAYLOAD,
+    ETHER_MIN_PAYLOAD,
+    ETHERTYPE_VLAN,
+    VLAN_ETH_HEADER_LEN,
+)
+from netlayers.utils import format_mac, parse_mac
 
 
 def parse_frame(raw_data: bytes) -> dict:
@@ -31,3 +37,21 @@ def parse_frame(raw_data: bytes) -> dict:
         "payload": payload,
     }
 
+
+def build_frame(
+    dst_mac: str,
+    src_mac: str,
+    ethertype: int,
+    payload: bytes = b"",
+    *,
+    pad: bool = False,
+) -> bytes:
+    if not 0 <= ethertype <= 0xFFFF:
+        raise ValueError(f"EtherType out of range: {ethertype}")
+    if len(payload) > ETHER_MAX_PAYLOAD:
+        raise ValueError("Payload exceeds Ethernet MTU")
+
+    header = struct.pack("!6s6sH", parse_mac(dst_mac), parse_mac(src_mac), ethertype)
+    if pad and len(payload) < ETHER_MIN_PAYLOAD:
+        payload = payload.ljust(ETHER_MIN_PAYLOAD, b"\x00")
+    return header + payload
