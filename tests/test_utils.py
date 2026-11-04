@@ -1,6 +1,26 @@
+import ipaddress
+import struct
+
 import pytest
 
-from netlayers.utils import format_ip, format_mac, hexdump, parse_mac
+from netlayers.utils import (
+    build_pseudo_header,
+    format_ip,
+    format_mac,
+    hexdump,
+    parse_ip,
+    parse_mac,
+)
+
+
+@pytest.fixture
+def pseudo_header_values():
+    return {
+        "src_ip": "192.168.1.10",
+        "dst_ip": "192.168.1.20",
+        "protocol": 6,
+        "length": 100,
+    }
 
 
 def test_format_mac_basic():
@@ -135,3 +155,246 @@ def test_parse_mac_valid(mac, expected):
 def test_parse_mac_invalid(mac):
     with pytest.raises(ValueError, match="Invalid MAC address"):
         parse_mac(mac)
+
+
+@pytest.mark.parametrize(
+    "ip, expected",
+    [
+        ("192.168.1.1", b"\xc0\xa8\x01\x01"),
+        ("10.0.0.1", b"\x0a\x00\x00\x01"),
+        ("127.0.0.1", b"\x7f\x00\x00\x01"),
+        ("255.255.255.255", b"\xff\xff\xff\xff"),
+        ("0.0.0.0", b"\x00\x00\x00\x00"),
+    ],
+)
+def test_parse_ip_valid(ip, expected):
+    result = parse_ip(ip)
+
+    assert isinstance(result, bytes)
+    assert len(result) == 4
+    assert result == expected
+
+
+def test_parse_ip_returns_ipv4_packed_bytes():
+    ip = "192.168.1.10"
+
+    result = parse_ip(ip)
+
+    assert result == ipaddress.IPv4Address(ip).packed
+
+
+@pytest.mark.parametrize(
+    "invalid_ip",
+    [
+        "999.168.1.1",
+        "192.168.1.256",
+        "192.168.1",
+        "192.168.1.1.1",
+        "not_an_ip",
+        "",
+        "2001:db8::1",
+        "abc.def.ghi.jkl",
+        "192.168.-1.1",
+    ],
+)
+def test_parse_ip_invalid(invalid_ip):
+    with pytest.raises(ipaddress.AddressValueError):
+        parse_ip(invalid_ip)
+
+
+def test_parse_ip_returns_four_bytes():
+    result = parse_ip("8.8.8.8")
+
+    assert len(result) == 4
+
+
+def test_build_pseudo_header_returns_bytes(pseudo_header_values):
+    result = build_pseudo_header(**pseudo_header_values)
+
+    assert isinstance(result, bytes)
+
+
+def test_build_pseudo_header_length(pseudo_header_values):
+    result = build_pseudo_header(**pseudo_header_values)
+
+    # 4 bytes source IP
+    # 4 bytes destination IP
+    # 2 bytes protocol
+    # 2 bytes length
+    assert len(result) == 12
+
+
+def test_build_pseudo_header_source_ip(pseudo_header_values):
+    result = build_pseudo_header(**pseudo_header_values)
+
+    assert result[:4] == bytes.fromhex("C0A8010A")
+
+
+def test_build_pseudo_header_destination_ip(pseudo_header_values):
+    result = build_pseudo_header(**pseudo_header_values)
+
+    assert result[4:8] == bytes.fromhex("C0A80114")
+
+
+def test_build_pseudo_header_protocol(pseudo_header_values):
+    result = build_pseudo_header(**pseudo_header_values)
+
+    assert result[8:10] == struct.pack("!H", 6)
+
+
+def test_build_pseudo_header_length_field(pseudo_header_values):
+    result = build_pseudo_header(**pseudo_header_values)
+
+    assert result[10:12] == struct.pack("!H", 100)
+
+
+def test_build_pseudo_header_complete_structure(pseudo_header_values):
+    result = build_pseudo_header(**pseudo_header_values)
+
+    src_ip, dst_ip, protocol, length = struct.unpack(
+        "!4s4sHH",
+        result,
+    )
+
+    assert src_ip == ipaddress.IPv4Address("192.168.1.10").packed
+
+    assert dst_ip == ipaddress.IPv4Address("192.168.1.20").packed
+
+    assert protocol == 6
+    assert length == 100
+
+
+@pytest.mark.parametrize(
+    "protocol",
+    [-1, 256, 1000],
+)
+def test_build_pseudo_header_invalid_protocol(
+    pseudo_header_values,
+    protocol,
+):
+    pseudo_header_values["protocol"] = protocol
+
+    with pytest.raises(
+        ValueError,
+        match="Protocol out of range",
+    ):
+        build_pseudo_header(**pseudo_header_values)
+
+
+@pytest.mark.parametrize(
+    "protocol",
+    [0, 1, 6, 17, 255],
+)
+def test_build_pseudo_header_valid_protocol(
+    pseudo_header_values,
+    protocol,
+):
+    pseudo_header_values["protocol"] = protocol
+
+    result = build_pseudo_header(**pseudo_header_values)
+
+    assert struct.unpack("!H", result[8:10])[0] == protocol
+
+
+@pytest.mark.parametrize(
+    "length",
+    [-1, 65536, 100000],
+)
+def test_build_pseudo_header_invalid_length(
+    pseudo_header_values,
+    length,
+):
+    pseudo_header_values["length"] = length
+
+    with pytest.raises(
+        ValueError,
+        match="Length out of range",
+    ):
+        build_pseudo_header(**pseudo_header_values)
+
+
+@pytest.mark.parametrize(
+    "length",
+    [0, 1, 1500, 65535],
+)
+def test_build_pseudo_header_valid_length(
+    pseudo_header_values,
+    length,
+):
+    pseudo_header_values["length"] = length
+
+    result = build_pseudo_header(**pseudo_header_values)
+
+    assert struct.unpack("!H", result[10:12])[0] == length
+
+
+@pytest.mark.parametrize(
+    "invalid_ip",
+    [
+        "999.168.1.1",
+        "192.168.1",
+        "not_an_ip",
+        "",
+        "2001:db8::1",
+    ],
+)
+def test_build_pseudo_header_invalid_source_ip(
+    pseudo_header_values,
+    invalid_ip,
+):
+    pseudo_header_values["src_ip"] = invalid_ip
+
+    with pytest.raises(ipaddress.AddressValueError):
+        build_pseudo_header(**pseudo_header_values)
+
+
+@pytest.mark.parametrize(
+    "invalid_ip",
+    [
+        "999.168.1.1",
+        "192.168.1",
+        "not_an_ip",
+        "",
+        "2001:db8::1",
+    ],
+)
+def test_build_pseudo_header_invalid_destination_ip(
+    pseudo_header_values,
+    invalid_ip,
+):
+    pseudo_header_values["dst_ip"] = invalid_ip
+
+    with pytest.raises(ipaddress.AddressValueError):
+        build_pseudo_header(**pseudo_header_values)
+
+
+def test_build_pseudo_header_zero_values():
+    result = build_pseudo_header(
+        src_ip="0.0.0.0",
+        dst_ip="0.0.0.0",
+        protocol=0,
+        length=0,
+    )
+
+    assert result == b"\x00" * 12
+
+
+def test_build_pseudo_header_maximum_values():
+    result = build_pseudo_header(
+        src_ip="255.255.255.255",
+        dst_ip="255.255.255.255",
+        protocol=255,
+        length=65535,
+    )
+
+    assert result == (b"\xff" * 8 + b"\x00\xff" + b"\xff\xff")
+
+
+def test_build_pseudo_header_does_not_modify_inputs(
+    pseudo_header_values,
+):
+    original = pseudo_header_values.copy()
+
+    build_pseudo_header(**pseudo_header_values)
+
+    assert pseudo_header_values == original
