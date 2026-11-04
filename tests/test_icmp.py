@@ -2,12 +2,14 @@ import struct
 
 import pytest
 
+from netlayers.checksum import internet_checksum
 from netlayers.constant import (
+    ICMP_CODE_ECHO,
     ICMP_ECHO_REPLY,
     ICMP_ECHO_REQUEST,
     ICMP_HEADER_LEN,
 )
-from netlayers.icmp import parse_icmp
+from netlayers.icmp import build_icmp_echo_request, parse_icmp
 
 
 @pytest.fixture
@@ -143,3 +145,198 @@ def test_parse_icmp_exact_header_length():
     assert result["payload"] == b""
     assert result["identifier"] == 0x5678
     assert result["sequence"] == 1
+
+
+def test_build_icmp_echo_request_empty_payload():
+    packet = build_icmp_echo_request(
+        identifier=1,
+        sequence=1,
+    )
+
+    assert isinstance(packet, bytes)
+    assert len(packet) == 8
+
+
+def test_build_icmp_echo_request_with_payload():
+    payload = b"Hello, ICMP!"
+
+    packet = build_icmp_echo_request(
+        identifier=1,
+        sequence=1,
+        payload=payload,
+    )
+
+    assert len(packet) == 8 + len(payload)
+    assert packet[8:] == payload
+
+
+def test_icmp_packet_header():
+    packet = build_icmp_echo_request(
+        identifier=1234,
+        sequence=5,
+    )
+
+    icmp_type, code, checksum, identifier, sequence = struct.unpack(
+        "!BBHHH", packet[:8]
+    )
+
+    assert icmp_type == ICMP_ECHO_REQUEST
+    assert code == ICMP_CODE_ECHO
+    assert identifier == 1234
+    assert sequence == 5
+    assert isinstance(checksum, int)
+
+
+def test_icmp_checksum_is_valid():
+    payload = b"Hello, ICMP!"
+
+    packet = build_icmp_echo_request(
+        identifier=1234,
+        sequence=5,
+        payload=payload,
+    )
+
+    assert internet_checksum(packet) == 0
+
+
+def test_icmp_checksum_changes_with_payload():
+    packet1 = build_icmp_echo_request(
+        identifier=1,
+        sequence=1,
+        payload=b"Hello",
+    )
+
+    packet2 = build_icmp_echo_request(
+        identifier=1,
+        sequence=1,
+        payload=b"World",
+    )
+
+    assert packet1[2:4] != packet2[2:4]
+
+
+def test_icmp_checksum_changes_with_identifier():
+    packet1 = build_icmp_echo_request(
+        identifier=1,
+        sequence=1,
+    )
+
+    packet2 = build_icmp_echo_request(
+        identifier=2,
+        sequence=1,
+    )
+
+    assert packet1[2:4] != packet2[2:4]
+
+
+def test_icmp_checksum_changes_with_sequence():
+    packet1 = build_icmp_echo_request(
+        identifier=1,
+        sequence=1,
+    )
+
+    packet2 = build_icmp_echo_request(
+        identifier=1,
+        sequence=2,
+    )
+
+    assert packet1[2:4] != packet2[2:4]
+
+
+@pytest.mark.parametrize(
+    "identifier",
+    [-1, 0x10000, 100000],
+)
+def test_invalid_identifier(identifier):
+    with pytest.raises(
+        ValueError,
+        match="Identifier out of range",
+    ):
+        build_icmp_echo_request(
+            identifier=identifier,
+            sequence=1,
+        )
+
+
+@pytest.mark.parametrize(
+    "sequence",
+    [-1, 0x10000, 100000],
+)
+def test_invalid_sequence(sequence):
+    with pytest.raises(
+        ValueError,
+        match="Sequence out of range",
+    ):
+        build_icmp_echo_request(
+            identifier=1,
+            sequence=sequence,
+        )
+
+
+@pytest.mark.parametrize(
+    "identifier",
+    [0, 1, 0xFFFF],
+)
+def test_valid_identifier_boundaries(identifier):
+    packet = build_icmp_echo_request(
+        identifier=identifier,
+        sequence=1,
+    )
+
+    unpacked = struct.unpack("!BBHHH", packet[:8])
+
+    assert unpacked[3] == identifier
+
+
+@pytest.mark.parametrize(
+    "sequence",
+    [0, 1, 0xFFFF],
+)
+def test_valid_sequence_boundaries(sequence):
+    packet = build_icmp_echo_request(
+        identifier=1,
+        sequence=sequence,
+    )
+
+    unpacked = struct.unpack("!BBHHH", packet[:8])
+
+    assert unpacked[4] == sequence
+
+
+def test_large_payload():
+    payload = b"A" * 1400
+
+    packet = build_icmp_echo_request(
+        identifier=100,
+        sequence=10,
+        payload=payload,
+    )
+
+    assert len(packet) == 8 + 1400
+    assert packet[8:] == payload
+    assert internet_checksum(packet) == 0
+
+
+def test_zero_identifier_and_sequence():
+    packet = build_icmp_echo_request(
+        identifier=0,
+        sequence=0,
+    )
+
+    unpacked = struct.unpack("!BBHHH", packet[:8])
+
+    assert unpacked[3] == 0
+    assert unpacked[4] == 0
+
+
+def test_input_payload_is_not_modified():
+    payload = b"\x01\x02\x03\x04"
+    original_payload = payload
+
+    build_icmp_echo_request(
+        identifier=1,
+        sequence=1,
+        payload=payload,
+    )
+
+    assert payload == original_payload
