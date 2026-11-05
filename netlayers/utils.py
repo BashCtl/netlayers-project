@@ -45,7 +45,7 @@ def parse_ip(ip: str) -> bytes:
 
 def build_pseudo_header(src_ip: str, dst_ip: str, protocol: int, length: int) -> bytes:
     """The pseudo-header is used only for checksum calculation and is never sent on the wire."""
-    
+
     if not 0 <= protocol <= 0xFF:
         raise ValueError(f"Protocol out of range: {protocol}")
     if not 0 <= length <= 0xFFFF:
@@ -61,3 +61,10 @@ def build_pseudo_header(src_ip: str, dst_ip: str, protocol: int, length: int) ->
         protocol,
         length,
     )
+
+
+def validate_uint(value: int, bits: int, name: str) -> None:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(f"{name} must be an integer")
+    if not 0 <= value < (1 << bits):
+        raise ValueError(f"{name} must fit in {bits} bits, got {value}")

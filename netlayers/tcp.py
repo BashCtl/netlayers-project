@@ -3,7 +3,7 @@ from typing import Any
 
 from netlayers.checksum import internet_checksum
 from netlayers.constant import IP_PROTO_TCP, TCP_MIN_HEADER_LENGTH
-from netlayers.utils import build_pseudo_header
+from netlayers.utils import build_pseudo_header, validate_uint
 
 
 def parse_tcp(ipv4_payload) -> dict[str, Any]:
@@ -59,6 +59,14 @@ def build_tcp_segment(
     payload: bytes = b"",
     options: bytes = b"",
 ) -> bytes:
+
+    validate_uint(src_port, 16, "Source port")
+    validate_uint(dst_port, 16, "Destination port")
+    validate_uint(window_size, 16, "Window size")
+    validate_uint(urgent_pointer, 16, "Urgent pointer")
+    validate_uint(sequence_num, 32, "Sequence number")
+    validate_uint(ack_num, 32, "ACK num")
+    validate_uint(flags, 8, "Flags")
 
     offset = (TCP_MIN_HEADER_LENGTH + len(options)) // 4
     header = struct.pack(

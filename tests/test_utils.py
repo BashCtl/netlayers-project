@@ -10,6 +10,7 @@ from netlayers.utils import (
     hexdump,
     parse_ip,
     parse_mac,
+    validate_uint,
 )
 
 
@@ -398,3 +399,75 @@ def test_build_pseudo_header_does_not_modify_inputs(
     build_pseudo_header(**pseudo_header_values)
 
     assert pseudo_header_values == original
+
+
+@pytest.mark.parametrize(
+    "value, bits",
+    [
+        (0, 8),
+        (1, 8),
+        (255, 8),
+        (0, 16),
+        (65535, 16),
+        (0, 32),
+        (4294967295, 32),
+        (0, 64),
+        ((1 << 64) - 1, 64),
+    ],
+)
+def test_validate_uint_valid_values(value, bits):
+    assert validate_uint(value, bits, "value") is None
+
+
+@pytest.mark.parametrize(
+    "value, bits",
+    [
+        (-1, 8),
+        (-1, 16),
+        (-100, 32),
+        (256, 8),
+        (65536, 16),
+        (4294967296, 32),
+    ],
+)
+def test_validate_uint_out_of_range(value, bits):
+    with pytest.raises(
+        ValueError,
+        match="must fit in",
+    ):
+        validate_uint(value, bits, "value")
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        1.5,
+        1.0,
+        "123",
+        "10",
+        None,
+        [],
+        {},
+        (),
+        b"\x01",
+        complex(1, 2),
+    ],
+)
+def test_validate_uint_invalid_type(value):
+    with pytest.raises(
+        ValueError,
+        match="must be an integer",
+    ):
+        validate_uint(value, 16, "value")
+
+
+@pytest.mark.parametrize(
+    "value",
+    [True, False],
+)
+def test_validate_uint_rejects_boolean(value):
+    with pytest.raises(
+        ValueError,
+        match="must be an integer",
+    ):
+        validate_uint(value, 8, "value")
