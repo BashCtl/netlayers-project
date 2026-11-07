@@ -1,3 +1,4 @@
+import argparse
 import ipaddress
 import re
 import struct
@@ -68,3 +69,31 @@ def validate_uint(value: int, bits: int, name: str) -> None:
         raise ValueError(f"{name} must be an integer")
     if not 0 <= value < (1 << bits):
         raise ValueError(f"{name} must fit in {bits} bits, got {value}")
+
+
+def ipv4_address(value: str) -> str:
+    try:
+        return str(ipaddress.IPv4Address(value))
+    except ipaddress.AddressValueError:
+        raise argparse.ArgumentTypeError(f"invalid IPv4 address: {value!r}")
+
+
+def positive_int(value: str) -> int:
+    try:
+        number = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"not an integer: {value!r}")
+    if number < 1:
+        raise argparse.ArgumentTypeError("must be 1 or greater")
+    return number
+
+
+def positive_float(value: str) -> float:
+    try:
+        number = float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"not a float: {value}")
+
+    if number < 0:
+        raise argparse.ArgumentTypeError("must be a positive number")
+    return number

@@ -3,11 +3,11 @@ from typing import Any
 
 from netlayers.checksum import internet_checksum
 from netlayers.constant import (
+    ICMP_CODE_ECHO,
     ICMP_COMMON_LEN,
     ICMP_ECHO_REPLY,
     ICMP_ECHO_REQUEST,
     ICMP_HEADER_LEN,
-    ICMP_CODE_ECHO,
 )
 
 
