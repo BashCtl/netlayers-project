@@ -1,3 +1,4 @@
+import argparse
 import ipaddress
 import struct
 
@@ -8,10 +9,49 @@ from netlayers.utils import (
     format_ip,
     format_mac,
     hexdump,
+    ipv4_address,
     parse_ip,
     parse_mac,
+    positive_float,
+    positive_int,
     validate_uint,
 )
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [("192.168.1.1", "192.168.1.1"), ("0.0.0.0", "0.0.0.0")],
+)
+def test_ipv4_address_valid(value, expected):
+    assert ipv4_address(value) == expected
+
+
+@pytest.mark.parametrize("value", ["256.1.1.1", "not-an-ip", "2001:db8::1"])
+def test_ipv4_address_invalid(value):
+    with pytest.raises(argparse.ArgumentTypeError, match="invalid IPv4 address"):
+        ipv4_address(value)
+
+
+@pytest.mark.parametrize(("value", "expected"), [("12", 12), ("1", 1)])
+def test_positive_int_valid(value, expected):
+    assert positive_int(value) == expected
+
+
+@pytest.mark.parametrize("value", ["0", "-2", "one"])
+def test_positive_int_invalid(value):
+    with pytest.raises(argparse.ArgumentTypeError):
+        positive_int(value)
+
+
+@pytest.mark.parametrize(("value", "expected"), [("1.5", 1.5), ("0", 0.0)])
+def test_positive_float_valid_and_zero_boundary(value, expected):
+    assert positive_float(value) == expected
+
+
+@pytest.mark.parametrize("value", ["-0.1", "not-a-float"])
+def test_positive_float_invalid(value):
+    with pytest.raises(argparse.ArgumentTypeError):
+        positive_float(value)
 
 
 @pytest.fixture
