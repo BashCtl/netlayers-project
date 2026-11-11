@@ -108,38 +108,50 @@ def extract_probe_ids(payload: bytes) -> tuple[int, int] | None:
     if len(payload) < IPV4_MIN_HEADER_LENGTH:
         return None
     version_ihl = payload[0]
+
     if version_ihl >> 4 != 4:
         return None
     header_len = (version_ihl & 0x0F) * 4
+
     if header_len < IPV4_MIN_HEADER_LENGTH:
         return None
+    
     if len(payload) < header_len + 8:
         return None
+    
     if payload[9] != IP_PROTO_ICMP:
         return None
+    
     if payload[header_len] != ICMP_ECHO_REQUEST:
         return None
+    
     return struct.unpack_from("!HH", payload, header_len + 4)
 
 
 def is_route_reply_to_probe(icmp: dict, identifier: int, sequence: int) -> bool:
     if icmp["type"] not in (ICMP_TIME_EXCEEDED, ICMP_DEST_UNREACHABLE):
         return False
+    
     if icmp["type"] == ICMP_TIME_EXCEEDED and icmp["code"] != ICMP_CODE_TTL_EXCEEDED:
         return False
+    
     ids = extract_probe_ids(icmp["payload"])
+
     return ids == (identifier, sequence)
 
 
 def print_hop(ttl: int, hop_results: list[ProbeResult]) -> None:
     ips = [r.ip for r in hop_results if r is not None]
+
     if not ips:
         print(f"{ttl:2}  " + "  ".join("*" for _ in hop_results))
         return
+    
     times = [
         f"{r.rtt:.2f} ms {r.mark}".rstrip() if r is not None else "*"
         for r in hop_results
     ]
+
     print(f"{ttl:2}  {ips[0]:<15}  " + "  ".join(times))
 
 
@@ -150,18 +162,22 @@ def traceroute(dst_ip: str, max_hops: int = 30, timeout: float = 1.0) -> None:
     try:
         interface, gateway = find_route(dst_ip)
         next_hop = gateway or dst_ip
+
         with socket.socket(
             socket.AF_PACKET,
             socket.SOCK_RAW,
             socket.htons(socket.ETH_P_ALL),
         ) as sock:
+            
             sock.bind((interface, 0))
             _, _, _, _, hwaddr = sock.getsockname()
             src_mac = format_mac(hwaddr)
             src_ip = get_local_ip(dst_ip)
             dst_mac = resolve_target_mac(sock, src_mac, src_ip, next_hop, timeout)
             identifier = os.getpid() & 0xFFFF
+
             print(f"traceroute to {dst_ip}, {max_hops} hops max")
+
             try:
                 for ttl in range(1, max_hops + 1):
                     stop = False
@@ -195,8 +211,10 @@ def traceroute(dst_ip: str, max_hops: int = 30, timeout: float = 1.0) -> None:
 
                         while True:
                             recv_result = receive_icmp_message(sock, deadline)
+
                             if recv_result is None:
                                 break
+
                             ip_reply, icmp, recv_at = recv_result
 
                             if is_echo_reply_to_probe(
@@ -210,14 +228,18 @@ def traceroute(dst_ip: str, max_hops: int = 30, timeout: float = 1.0) -> None:
                             if is_route_reply_to_probe(icmp, identifier, sequence):
                                 rtt = (recv_at - sent_at) * 1000
                                 mark = ""
+
                                 if icmp["type"] == ICMP_DEST_UNREACHABLE:
                                     mark = UNREACHABLE_MARKS.get(icmp["code"], "!?")
                                     stop = True
+
                                 result = ProbeResult(ip_reply["src_ip"], rtt, mark)
                                 break
 
                         hop_results.append(result)
+                        
                     print_hop(ttl, hop_results)
+
                     if stop:
                         break
             except KeyboardInterrupt:
